@@ -1,3 +1,15 @@
+# Custom ignored files
+.vscode/*
+ckpt/*
+data/*
+!data/format_data/*
+log/*
+nc-ckpt/*
+nc-results/*
+results/*
+saved_models/*
+time_measure/*
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
