@@ -22,7 +22,7 @@ from data_util import load_data, load_split_edges
 from utils import get_free_gpu, timeit, EarlyStopMonitor, set_logger, set_random_seed, write_result
 from util_dgl import construct_dglgraph
 
-from fast_gtc import FastTemporalLinkTrainer, precompute_maxeid, prepare_node_dataset
+from tap_gnn import TAPGNNLinkTrainer, precompute_maxeid, prepare_node_dataset
 
 # Change the order so that it is the one used by "nvidia-smi" and not the
 # one used by all other programs ("FASTEST_FIRST")
@@ -45,30 +45,6 @@ class LR(torch.nn.Module):
         x = self.dropout(x)
         return self.fc_3(x).squeeze(dim=1)
 
-
-# def prepare_node_dataset(dataset):
-#     # edges, nodes = load_split_edges(dataset=dataset)
-#     # train_data, val_data, test_data = edges[0]
-#     train_data, val_data, test_data, nodes = load_split_edges(dataset=dataset)
-#     edges = pd.concat([train_data, val_data, test_data]).reset_index(drop=True)
-#     # nodes = nodes[0]
-#     id2idx = {row.node_id: row.id_map for row in nodes.itertuples()}
-
-#     def _f(edges):
-#         edges["from_node_id"] = edges["from_node_id"].map(id2idx)
-#         edges["to_node_id"] = edges["to_node_id"].map(id2idx)
-#         return edges
-#     edges, train_data, val_data, test_data = [
-#         _f(e) for e in [edges, train_data, val_data, test_data]]
-#     tmax, tmin = edges["timestamp"].max(), edges["timestamp"].min()
-#     def scaler(s): return (s - tmin) / (tmax - tmin)
-#     # def scaler(s): return (s - tmin)
-#     edges["timestamp"] = scaler(edges["timestamp"])
-#     train_data["timestamp"] = scaler(train_data["timestamp"])
-#     val_data["timestamp"] = scaler(val_data["timestamp"])
-#     test_data["timestamp"] = scaler(test_data["timestamp"])
-#     return nodes, edges, train_data, val_data, test_data
-
 def stratified_batch(train_ids, labels, nbatch):
     vals = list(np.unique(labels))
     vids = [train_ids[labels == v] for v in vals]  # edge_ids for each value
@@ -79,7 +55,6 @@ def stratified_batch(train_ids, labels, nbatch):
         batch_ids = [ids[idx * vsize[i]: (idx + 1) * vsize[i]]
                      for i, ids in enumerate(vids)]
         yield np.concatenate(batch_ids)
-
 
 def balance_batch(train_ids, labels, nbatch, neg_ratio=1):
     pos_ids = train_ids[labels == 1]
@@ -103,25 +78,6 @@ def eval_nodeclass(embeds, lr_model, eids, val_data, batch_size=None):
         f1 = f1_score(labels, logits >= 0.5)
         auc = roc_auc_score(labels, logits)
     return acc, f1, auc
-
-@torch.no_grad()
-def eval_emb(tgan, src_l, dst_l, ts_l, label_l, batch_size):
-    embs = []
-    tgan.eval()
-    num_instance = len(src_l)
-    num_batch = math.ceil(num_instance / batch_size)
-
-    for k in trange(num_batch):
-        s_idx = k * batch_size
-        e_idx = min(num_instance, s_idx + batch_size)
-        src_l_cut = src_l[s_idx:e_idx]
-        dst_l_cut = dst_l[s_idx:e_idx]
-        ts_l_cut = ts_l[s_idx:e_idx]
-        src_embed = tgan.tem_conv(src_l_cut, ts_l_cut, num_layer)
-        dst_embed = tgan.tem_conv(dst_l_cut, ts_l_cut, num_layer)
-        embs.append(torch.cat([src_embed, dst_embed], dim=1))
-
-    return torch.cat(embs, dim=0)
 
 def main(args, logger):
     set_random_seed()
@@ -162,23 +118,23 @@ def main(args, logger):
     # Set model configuration.
     # Input features: node_featurs + edge_features + time_encoding
     # in_feats = (g.ndata["nfeat"].shape[-1] + g.edata["efeat"].shape[-1])
-    # tgcl = TemporalLinkTrainer(g, in_feats, args.n_hidden, args.n_hidden, args)
+    # tap = TemporalLinkTrainer(g, in_feats, args.n_hidden, args.n_hidden, args)
     in_feat = g.ndata["nfeat"].shape[-1]
     edge_feat = g.edata["efeat"].shape[-1]
-    tgcl = FastTemporalLinkTrainer(g, in_feat, edge_feat, args.n_hidden, args)
-    tgcl = tgcl.to(device)
+    tap = TAPGNNLinkTrainer(g, in_feat, edge_feat, args.n_hidden, args)
+    tap = tap.to(device)
 
     logger.info("loading saved TGCL model")
-    model_path = f"./saved_models/FastGTC-{args.dataset}-{args.agg_type}-{args.gcn_lr:.4f}-layer{args.n_layers}-hidden{args.n_hidden}.pth"
-    tgcl.load_state_dict(torch.load(model_path))
-    tgcl.eval()
+    model_path = f"./saved_models/TAP-GNN-{args.dataset}-{args.agg_type}-{args.gcn_lr:.4f}-layer{args.n_layers}-hidden{args.n_hidden}.pth"
+    tap.load_state_dict(torch.load(model_path))
+    tap.eval()
     logger.info("TGCL models loaded")
 
     start = time.time()
     with torch.no_grad():
         g.ndata["deg"] = (g.in_degrees() +
                           g.out_degrees()).to(g.ndata["nfeat"])
-        src_feat, dst_feat = tgcl.conv(g)
+        src_feat, dst_feat = tap.conv(g)
         embeds = torch.cat((src_feat, dst_feat), dim=1)
     logger.info("Convolution takes %.2f secs.", time.time() - start)
 
@@ -223,7 +179,7 @@ def main(args, logger):
         batch_sampler = balance_batch(
             train_ids, train_data.loc[train_ids, "state_label"], num_batch)
         for idx in batch_bar:
-            tgcl.eval()
+            tap.eval()
             lr_model.train()
 
             if args.sampling == "normal":

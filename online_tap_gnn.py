@@ -21,7 +21,7 @@ from tqdm import trange
 
 from data_util import load_data, load_label_edges, load_split_edges
 from dataset import TemporalDataset
-from fast_gtc import (FastTemporalLinkTrainer, fastgtc_args, precompute_maxeid,
+from tap_gnn import (TAPGNNLinkTrainer, tapgnn_args, precompute_maxeid,
                       prepare_dataset)
 from layers import TimeEncodingLayer
 from util_dgl import construct_dglgraph
@@ -218,7 +218,7 @@ class OnlineSAGE(nn.Module):
         g.apply_edges(func=combine_feats)
         h_edge = self.time_encoder(g.edata["h_edge"], g.edata["timestamp"])
         g.edata["h_edge0"] = h_edge
-        # In the implementation of FastGTC, h_self0 is initialized with 
+        # In the implementation of TAP-GNN, h_self0 is initialized with 
         # src_feat, which is the same as h_edge here.
         rg = g.reverse(share_edata=True)
         def simple_reduce(nodes): return {"h_self0": 
@@ -266,9 +266,9 @@ class LinkLayer(nn.Module):
         logits = self.fc(self.dropout(x))
         return logits.squeeze()
 
-class OnlineGTC(nn.Module):
+class OnlineTAPGNN(nn.Module):
     def __init__(self, g, in_feats, edge_feats, n_hidden, args) -> None:
-        super(OnlineGTC, self).__init__()
+        super(OnlineTAPGNN, self).__init__()
         self.nfeat = g.ndata["nfeat"]
         self.efeat = g.edata["efeat"]
         self.logger = logging.getLogger()
@@ -359,7 +359,7 @@ def align_data_with_graph(g, val_labels):
     
 
 @torch.no_grad()
-def eval_fastgtc(model, g, batch_samples):
+def eval_tapgnn(model, g, batch_samples):
     logits = model.infer(g, batch_samples)
     logits = logits.sigmoid().cpu().numpy()
     return logits
@@ -385,7 +385,7 @@ def eval_online(model, g, val_labels):
             start_eid = end_eid
 
             if False:
-                # Check the equality between FastGTC and OnlineGTC after each update.
+                # Check the equality between TAP-GNN and OnlineTAPGNN after each update.
                 n_layer = model.n_layers + 1
                 h_self = [g.ndata[f"h_self{i}"] for i in range(n_layer)]
                 
@@ -413,7 +413,7 @@ def eval_online(model, g, val_labels):
             start_eid = end_eid
 
             if False:
-                # Check the equality between FastGTC and OnlineGTC after each update.
+                # Check the equality between TAP-GNN and OnlineTAPGNN after each update.
                 n_layer = model.n_layers + 1
                 h_self = [g.ndata[f"h_self{i}"] for i in range(n_layer)]
                 
@@ -494,22 +494,22 @@ def test_online(args, logger):
     lr = '%.4f' % args.lr
 
     def ckpt_path(epoch):
-        return f'./ckpt/FastGTC-{args.dataset}-{args.agg_type}-{lr}-{epoch}-{args.hostname}-{device.type}-{device.index}.pth'
+        return f'./ckpt/TAP-GNN-{args.dataset}-{args.agg_type}-{lr}-{epoch}-{args.hostname}-{device.type}-{device.index}.pth'
 
-    # MODEL_SAVE_PATH = f'./saved_models/FastGTC-{args.dataset}-{args.agg_type}-{lr}-layer{args.n_layers}-hidden{args.n_hidden}.pth'
+    # MODEL_SAVE_PATH = f'./saved_models/TAP-GNN-{args.dataset}-{args.agg_type}-{lr}-layer{args.n_layers}-hidden{args.n_hidden}.pth'
     # ckpt_state = torch.load(MODEL_SAVE_PATH)
 
     in_feat = g.ndata["nfeat"].shape[-1]
     edge_feat = g.edata["efeat"].shape[-1]
-    # gtc = FastTemporalLinkTrainer(g, in_feat, edge_feat, args.n_hidden, args)
+    # gtc = TAPGNNLinkTrainer(g, in_feat, edge_feat, args.n_hidden, args)
     # gtc.load_state_dict(ckpt_state)
     # gtc = gtc.to(device)
-    online = OnlineGTC(g, in_feat, edge_feat, args.n_hidden, args)
+    online = OnlineTAPGNN(g, in_feat, edge_feat, args.n_hidden, args)
     # online.load_state_dict(ckpt_state)
     online = online.to(device)
     
     # test_samples = align_data_with_graph(g, test_labels)
-    # logits = eval_fastgtc(gtc, g, test_samples)
+    # logits = eval_tapgnn(gtc, g, test_samples)
     # acc, f1, auc = eval_logit(test_labels["label"], logits)
     # logger.info("acc: %.3f, f1: %.3f, auc: %.3f", acc, f1, auc)
 
@@ -521,27 +521,27 @@ def test_online(args, logger):
     #              metrics,
     #              args.dataset,
     #              {},
-    #              postfix="OnlineGTC")
+    #              postfix="OnlineTAPGNN")
     # logger.info("acc: %.3f, f1: %.3f, auc: %.3f", acc, f1, auc)
 
     init_graph(g, args.n_layers)
     n_batch, duration = speed_online(online, g, val_labels, batch_size=args.batch_size)
     logger.info("%d batch cost %.2f seconds.", n_batch, duration)
     # method,dataset,time_batch,time_epoch,params
-    path = f'time_measure/Time-{args.dataset}-OnlineGTC.csv'
+    path = f'time_measure/Time-{args.dataset}-OnlineTAPGNN.csv'
     if os.path.exists(path):
         f = open(path, 'a')
     else:
         f = open(path, 'w')
         f.write('method,dataset,time_batch,time_epoch,params\n')
     params = f'\"batchsize={args.batch_size},layers={args.n_layers},agg_type={args.agg_type}\"'
-    s = f'OnlineGTC,{args.dataset},{duration/n_batch:.4f},{duration:.4f},{params}\n'
+    s = f'OnlineTAPGNN,{args.dataset},{duration/n_batch:.4f},{duration:.4f},{params}\n'
     f.write(s)
 
 
 if __name__ == "__main__":
     # Set arg_parser, logger, and etc.
-    parser = fastgtc_args()
+    parser = tapgnn_args()
     args = parser.parse_args()
     logger = set_logger()
     test_online(args, logger)

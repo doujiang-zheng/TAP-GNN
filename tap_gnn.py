@@ -85,9 +85,9 @@ class TGraphSAGE(nn.Module):
         return src_feat, dst_feat
 
 
-class FastTemporalLinkTrainer(nn.Module):
+class TAPGNNLinkTrainer(nn.Module):
     def __init__(self, g, in_feats, edge_feats, n_hidden, args):
-        super(FastTemporalLinkTrainer, self).__init__()
+        super(TAPGNNLinkTrainer, self).__init__()
         self.nfeat = g.ndata["nfeat"]
         self.efeat = g.edata["efeat"]
         self.logger = logging.getLogger()
@@ -296,13 +296,12 @@ def eval_linkpred(model, g, batch_samples, labels):
     return acc, f1, auc
 
 
-def train_fastgtc(args, logger):
+def train_tapgnn(args, logger):
     set_random_seed()
     logger.info("Set random seeds.")
     logger.info(args)
 
     # Set device utility.
-
     device = torch.device("cuda:{}".format(args.gid))
     logger.info(
         "Begin Conv on Device %s, GPU Memory %d GB", device,
@@ -375,7 +374,7 @@ def train_fastgtc(args, logger):
     in_feat = g.ndata["nfeat"].shape[-1]
     edge_feat = g.edata["efeat"].shape[-1]
 
-    model = FastTemporalLinkTrainer(g, in_feat, edge_feat, args.n_hidden, args)
+    model = TAPGNNLinkTrainer(g, in_feat, edge_feat, args.n_hidden, args)
     model = model.to(device)
     optimizer = torch.optim.Adam(model.parameters(),
                                  lr=args.lr,
@@ -427,7 +426,7 @@ def train_fastgtc(args, logger):
         lr = "%.4f" % args.lr
 
         def ckpt_path(epoch):
-            return f'./ckpt/FastGTC-{args.dataset}-{args.agg_type}-{lr}-{epoch}-{args.hostname}-{device.type}-{device.index}.pth'
+            return f'./ckpt/TAP-GNN-{args.dataset}-{args.agg_type}-{lr}-{epoch}-{args.hostname}-{device.type}-{device.index}.pth'
 
         if early_stopper.early_stop_check(auc):
             logger.info(
@@ -465,15 +464,15 @@ def train_fastgtc(args, logger):
                  metrics,
                  args.dataset,
                  params,
-                 postfix="FastGTC")
+                 postfix="TAP-GNN")
     lr = '%.4f' % args.lr
-    MODEL_SAVE_PATH = f'./saved_models/FastGTC-{args.dataset}-{args.agg_type}-{lr}-layer{args.n_layers}-hidden{args.n_hidden}.pth'
+    MODEL_SAVE_PATH = f'./saved_models/TAP-GNN-{args.dataset}-{args.agg_type}-{lr}-layer{args.n_layers}-hidden{args.n_hidden}.pth'
     model = model.cpu()
     logger.info('Save model at %s.', MODEL_SAVE_PATH)
     torch.save(model.state_dict(), MODEL_SAVE_PATH)
 
 
-def fastgtc_args():
+def tapgnn_args():
     import socket
     parser = argparse.ArgumentParser(description='Temporal GraphSAGE')
     parser.add_argument("-d", "--dataset", type=str, default="ia-contact")
@@ -544,7 +543,7 @@ if __name__ == "__main__":
     warnings.filterwarnings(
         module='sklearn*', action='ignore', category=UndefinedMetricWarning)
     # Set arg_parser, logger, and etc.
-    parser = fastgtc_args()
+    parser = tapgnn_args()
     args = parser.parse_args()
     logger = set_logger()
-    train_fastgtc(args, logger)
+    train_tapgnn(args, logger)
