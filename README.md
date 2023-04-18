@@ -9,7 +9,7 @@
 
 # TAP-GNN
 
-Code for [Temporal Aggregation and Propagation Graph Neural Networks For Dynamic Representation](https://ieeexplore.ieee.org/abstract/document/10094005).
+Code for [Temporal Aggregation and Propagation Graph Neural Networks For Dynamic Representation](https://arxiv.org/abs/2304.07503), and we have updated the latest results of baseline methods in the arxiv version than the IEEE published version.
 > Authors: Tongya Zheng, Xinchaon Wang, Zunlei Feng, Jie Song, Yunzhi Hao, Mingli Song, Xingen Wang, Xinyu Wang, Chun Chen
 
 We utilize the cool feature `group_apply_edges` of [dgl-0.4.3post2](./resources/dgl_cu102-0.4.3.post2-cp36-cp36m-manylinux1_x86_64.whl) to compute the aggregated neighbor messages of nodes along the chronological order, reducing the computation complexify of temporal graph convolution from $O(\sum_{v \in V} d_v^2) \ge O(E\cdot \bar{d})$ to $O(E)$.
