@@ -48,19 +48,19 @@ Running `bash ./init.sh` to create necessary directories.
 ### Temporal Link Prediction (Transductive)
 
 - We have computed the target edge ids of the proposed Aggregation and Propagation (AP), where we store the temporal node embeddings with the edge-size hidden embeddings. It is the same with our analysis in the paper that the size of temporal node embeddings is at the same-level of temporal edges $O(E)$. In this way, the Aggregation operation acts as a message-passing operation, and the Propagation operation acts as a reduction function with the proper normalization term, which can be seen in [](file:///layers.py#)
-> `python fast_gtc.py -d fb-forum`
+> `python tap_gnn.py -d fb-forum`
 
 ### Online Link Prediction
 
 - We have built an online model with the same functionality to the full-graph training model.
-> `python online_gtc.py -d JODIE-wikipedia -bs 500 --n-layers 30`
+> `python online_tap_gnn.py -d JODIE-wikipedia -bs 500 --n-layers 30`
 
 ### Temporal Node Classification
 
 - We find that using trainable node embeddings for inductive learning harms the generalization ability. So we freeze the node embeddings as all zero vectors for JODIE datasets.
-> `python fast_gtc.py -d JODIE-wikipedia --task node --no-trainable`
+> `python tap_gnn.py -d JODIE-wikipedia --task node --no-trainable`
 - We have set the balanced training strategy for the extremely imbalanced task of temporal node classification.
-> `python node_model.py -d JODIE-wikipedia`
+> `python node_tap_gnn.py -d JODIE-wikipedia`
 
 
 ## Cite us
